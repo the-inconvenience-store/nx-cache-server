@@ -170,16 +170,23 @@ setup is required.
 Uploads include `If-None-Match: *` on the S3 `PutObject` request. A backend that
 atomically enforces this condition prevents concurrent writers from overwriting
 the same cache key. S3 `412 PreconditionFailed` becomes HTTP 409;
-`409 ConditionalRequestConflict` becomes HTTP 503. Other storage failures remain
-errors; the server never retries with an unconditional write.
+`409 ConditionalRequestConflict` becomes HTTP 503. Conditional PUT is a
+best-effort enhancement, not a requirement for using this server. If storage
+explicitly rejects it as unsupported (`NotImplemented`, or an unsupported
+conditional-write message with `InvalidRequest`, `InvalidArgument`, or
+`UnsupportedOperation`), the server repeats the HEAD check and retries once
+without the condition. This preserves the original non-atomic upload behavior.
+Authentication, checksum, network, and unrelated storage errors are not treated
+as capability failures.
 
 **“S3-compatible” does not guarantee conditional PUT support.** AWS S3 supports
 this operation. Garage 2.5.0 and the development emulator ignore the condition:
 uploads work, but concurrent writers can still overwrite each other. The
 existing HEAD check is retained for early duplicate rejection on these backends;
-it is not an atomicity guarantee. Other unsupported backends may reject the
-header instead. Verify the exact provider and version before relying on atomic
-uploads. See
+it is not an atomicity guarantee. Backends that explicitly reject the condition
+use the compatibility retry described above. No backend change is required to
+keep using the server. Verify your exact provider and version if you need atomic
+protection. See
 [AWS conditional-write semantics](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
 
 Run the concurrency contract against a disposable bucket on your chosen backend:
