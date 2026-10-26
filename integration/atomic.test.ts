@@ -30,6 +30,10 @@ Deno.test('concurrent uploads create exactly one immutable artifact', async () =
     forcePathStyle: true,
     credentials: { accessKeyId, secretAccessKey },
   });
+  const gate = Promise.withResolvers<void>();
+  let readers = 0;
+  // Bound failures before both requests reach body consumption.
+  const timeout = setTimeout(() => gate.resolve(), 5_000);
   try {
     const payloads = ['first artifact', 'second artifact'];
     const upload = (body: string) =>
@@ -40,13 +44,22 @@ Deno.test('concurrent uploads create exactly one immutable artifact', async () =
             Authorization: 'Bearer atomic-test-token',
             'Content-Length': String(new TextEncoder().encode(body).byteLength),
           },
-          body,
+          body: new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              readers++;
+              if (readers === 2) gate.resolve();
+              await gate.promise;
+              controller.enqueue(new TextEncoder().encode(body));
+              controller.close();
+            },
+          }, { highWaterMark: 0 }),
         }),
         env,
       );
     const responses = await Promise.all(payloads.map(upload));
     const statuses = responses.map((response) => response.status);
     await Promise.all(responses.map((response) => response.body?.cancel()));
+    assertEquals(readers, 2, 'both uploads must pass HEAD before either PUT');
     assertEquals([...statuses].sort(), [200, 409]);
 
     const winner = payloads[statuses.indexOf(200)];
@@ -71,6 +84,8 @@ Deno.test('concurrent uploads create exactly one immutable artifact', async () =
     assertEquals(after.status, 200);
     assertEquals(await after.text(), winner);
   } finally {
+    clearTimeout(timeout);
+    gate.resolve();
     try {
       await storage.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
     } finally {
