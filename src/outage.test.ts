@@ -263,3 +263,14 @@ Deno.test('GET keeps genuine cache misses as 404 when fail-open is disabled', as
     await response.body?.cancel();
   });
 });
+
+Deno.test('GET treats a missing bucket as a storage failure, not a miss', async () => {
+  await withStorage(() => s3Error('NoSuchBucket', 404), async (endpoint) => {
+    const failOpen = await cacheRequest(endpoint, 'GET');
+    assertEquals(failOpen.status, 404);
+    await failOpen.body?.cancel();
+    const failClosed = await cacheRequest(endpoint, 'GET', { failOpen: false });
+    assertEquals(failClosed.status, 503);
+    assertEquals(await failClosed.text(), 'Cache storage unavailable');
+  });
+});

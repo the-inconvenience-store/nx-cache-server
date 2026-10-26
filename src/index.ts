@@ -206,7 +206,16 @@ app.get('/v1/cache/:hash', auth(), async (c) => {
     clearTimeout(timer);
 
     if (response.status === 404) {
-      await response.body?.cancel();
+      // S3 also answers 404 for a missing bucket; only NoSuchKey is a miss.
+      const errorBody = await response.text();
+      if (errorBody.includes('<Code>NoSuchBucket</Code>')) {
+        return storageFailure(
+          'GET',
+          hash,
+          'S3 bucket not found',
+          c.env.NX_CACHE_FAIL_OPEN,
+        );
+      }
       return cacheMiss();
     }
 
