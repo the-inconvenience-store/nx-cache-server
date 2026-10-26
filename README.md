@@ -17,7 +17,7 @@ and provides a production-ready solution for self-hosting your Nx remote cache.
 - Implements the Nx custom remote cache specification
 - Uses Amazon S3 for storage
 - Secure authentication using Bearer tokens
-- Efficient file streaming
+- Streamed downloads and bounded-memory uploads
 - Production-ready implementation
 - Available as a Docker image
 
@@ -38,6 +38,8 @@ S3_BUCKET_NAME=your-bucket-name
 S3_ENDPOINT_URL=your-s3-endpoint-url
 NX_CACHE_ACCESS_TOKEN=your-secure-token
 PORT=3000  # Optional, defaults to 3000
+MAX_UPLOAD_BYTES=268435456  # Optional, defaults to 256 MiB per artifact
+MAX_CONCURRENT_UPLOADS=2   # Optional, active uploads per server process
 TLS_CERT_PATH=/path/to/tls.crt  # Optional, enables HTTPS (must be set with TLS_KEY_PATH)
 TLS_KEY_PATH=/path/to/tls.key   # Optional, enables HTTPS (must be set with TLS_CERT_PATH)
 ```
@@ -154,6 +156,31 @@ For local development against the emulator above, use:
 ```bash
 deno task dev
 ```
+
+### Upload limits and memory sizing
+
+Uploads are buffered in one payload buffer, bounded by `MAX_UPLOAD_BYTES`
+(default 256 MiB). The server validates both `Content-Length` and actual bytes
+before writing to storage. Missing lengths return 411, malformed lengths and
+body-length mismatches return 400, and artifacts exceeding the limit return 413.
+Both limit settings must be positive safe integers; invalid configuration
+prevents startup.
+
+`MAX_CONCURRENT_UPLOADS` (default 2) bounds active uploads per process,
+including body reception and the storage write. Excess uploads return 503
+without an unbounded waiting queue. Slots are released on success, disconnects,
+and storage errors. Downloads and health checks do not consume upload slots.
+
+Set container memory above the process baseline plus
+`MAX_CONCURRENT_UPLOADS * MAX_UPLOAD_BYTES`, with additional room for SDK,
+network, and garbage-collection overhead. Defaults allow 512 MiB of active
+payload buffers alone; this is not a safe container memory limit. Buffers may
+remain resident until garbage collection. Measure peak RSS under your actual
+upload load before choosing a memory limit or increasing these settings. Match
+any reverse-proxy body limits to the server setting.
+
+In Helm, use `config.maxUploadBytes`, `config.maxConcurrentUploads`, and
+`resources.requests.memory` / `resources.limits.memory` together.
 
 ## Testing
 

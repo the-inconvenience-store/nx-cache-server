@@ -92,6 +92,8 @@ helm install nx-cache oci://ghcr.io/ikatsuba/charts/nx-cache-server \
 | `probes.readiness.enabled` | `true` | Readiness probe on `/health` |
 | `config.port` | `3000` | Container `PORT` |
 | `config.awsRegion` | `us-east-1` | `AWS_REGION` |
+| `config.maxUploadBytes` | `268435456` | Maximum artifact bytes; `MAX_UPLOAD_BYTES` |
+| `config.maxConcurrentUploads` | `2` | Active uploads per process; `MAX_CONCURRENT_UPLOADS` |
 | `config.s3.bucketName` | `nx-cloud` | `S3_BUCKET_NAME` |
 | `config.s3.endpointUrl` | `""` | **Required.** `S3_ENDPOINT_URL` |
 | `secrets.existingSecret` | `""` | If set, skip Secret creation and use this one |
@@ -115,3 +117,14 @@ helm install nx-cache oci://ghcr.io/ikatsuba/charts/nx-cache-server \
 
 When using `secrets.existingSecret`, the Secret must contain the keys
 `nx-cache-access-token`, `aws-access-key-id`, `aws-secret-access-key`.
+
+## Upload memory sizing
+
+Uploads use bounded buffering, not end-to-end streaming. Size pod memory above
+the runtime baseline plus `config.maxConcurrentUploads * config.maxUploadBytes`,
+allowing additional SDK/network buffers and garbage-collection headroom. The
+defaults permit 512 MiB of active payload buffers alone; measure peak RSS under
+your workload before setting `resources.requests.memory` and
+`resources.limits.memory`. These settings must be positive safe integers.
+Oversized uploads return 413 and exhausted upload capacity returns 503.
+

@@ -46,6 +46,9 @@ probes:
 # Non-secret configuration mapped to env vars in the container.
 config:
   port: 3000
+  # Per-artifact bytes and per-process active uploads; size memory accordingly.
+  maxUploadBytes: 268435456
+  maxConcurrentUploads: 2
   awsRegion: us-east-1
   s3:
     bucketName: nx-cloud

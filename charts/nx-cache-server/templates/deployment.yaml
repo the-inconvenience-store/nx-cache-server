@@ -45,6 +45,10 @@ spec:
           env:
             - name: PORT
               value: {{ .Values.config.port | quote }}
+            - name: MAX_UPLOAD_BYTES
+              value: {{ .Values.config.maxUploadBytes | quote }}
+            - name: MAX_CONCURRENT_UPLOADS
+              value: {{ .Values.config.maxConcurrentUploads | quote }}
             - name: AWS_REGION
               value: {{ .Values.config.awsRegion | quote }}
             - name: S3_BUCKET_NAME
