@@ -165,6 +165,40 @@ deno task e2e
 Both suites boot their own emulator and (for e2e) cache server — no separate
 setup is required.
 
+### Atomic uploads and storage compatibility
+
+Uploads include `If-None-Match: *` on the S3 `PutObject` request. A backend that
+atomically enforces this condition prevents concurrent writers from overwriting
+the same cache key. S3 `412 PreconditionFailed` becomes HTTP 409;
+`409 ConditionalRequestConflict` becomes HTTP 503. Other storage failures remain
+errors; the server never retries with an unconditional write.
+
+**“S3-compatible” does not guarantee conditional PUT support.** AWS S3 supports
+this operation. Garage 2.5.0 and the development emulator ignore the condition:
+uploads work, but concurrent writers can still overwrite each other. The
+existing HEAD check is retained for early duplicate rejection on these backends;
+it is not an atomicity guarantee. Other unsupported backends may reject the
+header instead. Verify the exact provider and version before relying on atomic
+uploads. See
+[AWS conditional-write semantics](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+
+Run the concurrency contract against a disposable bucket on your chosen backend:
+
+```bash
+AWS_REGION=your-region \
+AWS_ACCESS_KEY_ID=your-access-key \
+AWS_SECRET_ACCESS_KEY=your-secret-key \
+S3_BUCKET_NAME=your-test-bucket \
+S3_ENDPOINT_URL=https://your-s3-endpoint \
+deno task test:s3
+```
+
+This check races two different artifacts, verifies exactly one successful
+writer, then checks that later writes cannot replace its bytes. It is separate
+from emulator-based tests because that emulator does not enforce conditional
+writes. It intentionally fails on Garage 2.5.0. Use only a test bucket; the test
+needs permission to write, read, and delete its own objects.
+
 ## Usage with Nx
 
 To use this cache server with your Nx workspace, set the following environment

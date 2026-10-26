@@ -90,6 +90,8 @@ app.put('/v1/cache/:hash', auth(), async (c) => {
       });
     }
 
+    // Retain the fast duplicate check for backends without conditional PUT.
+    // Only IfNoneMatch on the write provides protection against concurrent writers.
     try {
       await c.get('s3').send(
         new HeadObjectCommand({
@@ -103,17 +105,10 @@ app.put('/v1/cache/:hash', auth(), async (c) => {
         headers: { 'Content-Type': 'text/plain' },
       });
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'NotFound') {
-        // Do nothing
-      } else {
-        console.error('Upload error:', error);
-        return new Response('Internal server error', {
-          status: 500,
-          headers: { 'Content-Type': 'text/plain' },
-        });
+      if (!(error instanceof Error && error.name === 'NotFound')) {
+        throw error;
       }
     }
-
     const body = await c.req.arrayBuffer();
 
     await c.get('s3').send(
@@ -121,6 +116,7 @@ app.put('/v1/cache/:hash', auth(), async (c) => {
         Bucket: c.env.S3_BUCKET_NAME,
         Key: hash,
         Body: new Uint8Array(body),
+        IfNoneMatch: '*',
       }),
     );
 
@@ -129,6 +125,18 @@ app.put('/v1/cache/:hash', auth(), async (c) => {
       headers: { 'Content-Type': 'text/plain' },
     });
   } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'PreconditionFailed') {
+      return new Response('Cannot override an existing record', {
+        status: 409,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    }
+    if (error instanceof Error && error.name === 'ConditionalRequestConflict') {
+      return new Response('Storage write conflict; try again', {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' },
+      });
+    }
     console.error('Upload error:', error);
     return new Response('Internal server error', {
       status: 500,
