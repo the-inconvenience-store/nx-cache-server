@@ -165,29 +165,20 @@ deno task e2e
 Both suites boot their own emulator and (for e2e) cache server — no separate
 setup is required.
 
-### Atomic uploads and storage compatibility
+### Upload compatibility
 
-Uploads include `If-None-Match: *` on the S3 `PutObject` request. A backend that
-atomically enforces this condition prevents concurrent writers from overwriting
-the same cache key. S3 `412 PreconditionFailed` becomes HTTP 409;
-`409 ConditionalRequestConflict` becomes HTTP 503. Conditional PUT is a
-best-effort enhancement, not a requirement for using this server. If storage
-explicitly rejects it as unsupported (`NotImplemented`, or an unsupported
-conditional-write message with `InvalidRequest`, `InvalidArgument`, or
-`UnsupportedOperation`), the server repeats the HEAD check and retries once
-without the condition. This preserves the original non-atomic upload behavior.
-Authentication, checksum, network, and unrelated storage errors are not treated
-as capability failures.
+Uploads use `If-None-Match: *` to prevent concurrent overwrites on storage
+services that support conditional writes. Existing objects return HTTP 409;
+transient conditional-write conflicts return HTTP 503.
 
-**“S3-compatible” does not guarantee conditional PUT support.** AWS S3 supports
-this operation. Garage 2.5.0 and the development emulator ignore the condition:
-uploads work, but concurrent writers can still overwrite each other. The
-existing HEAD check is retained for early duplicate rejection on these backends;
-it is not an atomicity guarantee. Backends that explicitly reject the condition
-use the compatibility retry described above. No backend change is required to
-keep using the server. Verify your exact provider and version if you need atomic
-protection. See
-[AWS conditional-write semantics](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
+Storage services without this capability continue using the existing upload
+behavior. The HEAD check is retained, and an explicit unsupported-condition
+response triggers one retry without the condition, with another HEAD check
+before retrying. No additional configuration is needed. Authentication,
+checksum, network, and unrelated storage errors remain errors.
+
+See
+[S3 conditional-write semantics](https://docs.aws.amazon.com/AmazonS3/latest/userguide/conditional-writes.html).
 
 Run the concurrency contract against a disposable bucket on your chosen backend:
 
@@ -200,11 +191,11 @@ S3_ENDPOINT_URL=https://your-s3-endpoint \
 deno task test:s3
 ```
 
-This check races two different artifacts, verifies exactly one successful
-writer, then checks that later writes cannot replace its bytes. It is separate
-from emulator-based tests because that emulator does not enforce conditional
-writes. It intentionally fails on Garage 2.5.0. Use only a test bucket; the test
-needs permission to write, read, and delete its own objects.
+This optional check races two different artifacts, verifies exactly one
+successful writer, then checks that later writes cannot replace its bytes. It
+measures the backend's atomic-write capability; normal upload compatibility does
+not depend on it passing. Use only a test bucket; the test needs permission to
+write, read, and delete its own objects.
 
 ## Usage with Nx
 

@@ -2,8 +2,8 @@ import { assertEquals } from '@std/assert';
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { app } from '../src/index.ts';
 
-// This contract requires a backend that enforces conditional PUT, not Garage
-// or the development emulator. See README.md for configuration and limitations.
+// Optional atomic-write capability contract. Normal upload compatibility does
+// not depend on this capability. See README.md for configuration.
 Deno.test('concurrent uploads create exactly one immutable artifact', async () => {
   const endpoint = Deno.env.get('S3_ENDPOINT_URL');
   const bucket = Deno.env.get('S3_BUCKET_NAME');
