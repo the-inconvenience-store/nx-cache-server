@@ -184,8 +184,8 @@ connection failures, fails the Nx run. By default (`NX_CACHE_FAIL_OPEN=true`),
 the server degrades when S3 fails so CI keeps building:
 
 - `GET` returns 404, so Nx rebuilds the task. This covers S3 errors, throttling,
-  credential and permission errors, unreachable storage, and no response headers
-  within 5 seconds.
+  credential and permission errors, a missing bucket, unreachable storage, and
+  no response headers within 5 seconds.
 - `PUT` returns 403 `Cache storage unavailable; artifact not stored`, so Nx
   continues without caching the artifact.
 - Each degraded response logs `Storage unavailable during GET|PUT <hash>`.
